@@ -3,6 +3,9 @@ TRGT = sinter-idris2
 
 all: $(TRGT)
 
+check: $(TRGT)
+	$(IDRIS) --check $^
+
 $(TRGT): Sinter.idr
 	$(IDRIS) $^ -o $@
 
