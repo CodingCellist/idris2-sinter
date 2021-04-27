@@ -88,16 +88,75 @@ testCase = SinDef (MkSinterID "test") [(MkSinterID "arg1"), (MkSinterID "arg2")]
 -- GORY DETAILS --
 ------------------
 
-liftedFunToSinter : (name : Name)
-                  -> (scope : List Name)
-                  -> (args : List Name)
-                  -> (x : Lifted (scope ++ args))
-                  -> ?hole2
+specialSep : String
+specialSep = "-|"
 
-liftedToSinter : (Name, LiftedDef) -> ?hole
-liftedToSinter (name, (MkLFun args scope x)) = liftedFunToSinter name scope args x
-liftedToSinter (name, (MkLCon tag arity nt)) = ?liftedConToSinter
+recordAcc : String
+recordAcc = "."
+
+||| Separate two ids by "specialSep"
+stitch : SinterID -> SinterID -> SinterID
+stitch (MkSinterID x) (MkSinterID y) = MkSinterID $ x ++ specialSep ++ y
+
+||| Turn a NS into a string separated by "specialSep"
+mangleNS : Namespace -> SinterID
+mangleNS ns = MkSinterID $ showNSWithSep specialSep ns
+
+||| Sinter doesn't have a concept of NameSpaces, so define unique, but
+||| identifiable names/strings instead.
+mangle : Name -> SinterID
+mangle (NS nameSpace name) =
+  let
+    nameSpace' = mangleNS nameSpace
+    name' = mangle name
+  in
+    stitch nameSpace' name'
+
+mangle (UN x) = MkSinterID x
+
+mangle (MN x i) = MkSinterID $ x ++ "-" ++ show i
+
+mangle (PV x i) = ?mangle_rhs_4     -- TODO
+
+mangle (DN x y) = MkSinterID x      -- FIXME: correct? (assumes x repr.s y)
+
+mangle (RF x) = MkSinterID $ recordAcc ++ x
+
+mangle (Nested x y) = ?mangle_rhs_7   -- TODO
+
+mangle (CaseBlock x y) = ?mangle_rhs_8
+
+mangle (WithBlock x y) = ?mangle_rhs_9
+
+mangle (Resolved i) = ?mangle_rhs_10
+
+liftedFunToSinter : (name : Name)
+                  -> (args : List Name)
+                  -> (scope : List Name)
+                  -> (x : Lifted (scope ++ args))
+                  -> Core SinterGlobal
+liftedFunToSinter name args scope x = ?liftedFunToSinter_rhs
+
+liftedConToSinter : (name : Name)
+                  -> (tag : Maybe Int)
+                  -> (arity : Nat)
+                  -> (nt : Maybe Nat)
+                  -> Core SinterGlobal
+liftedConToSinter name tag arity nt = ?liftedConToSinter_rhs
+
+liftedToSinter : (Name, LiftedDef) -> Core SinterGlobal
+-- function
+liftedToSinter (name, (MkLFun args scope body)) =    -- renamed x to body
+  liftedFunToSinter name args scope body
+
+-- constructor
+liftedToSinter (name, (MkLCon tag arity nt)) =
+  liftedConToSinter name tag arity nt
+
+-- ffi
 liftedToSinter (name, (MkLForeign ccs fargs x)) = ?liftedFFItoSinter
+
+-- error
 liftedToSinter (name, (MkLError x)) = ?liftedErrorToSinter
 
 
