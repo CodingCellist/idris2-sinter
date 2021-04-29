@@ -31,12 +31,15 @@ genSinterID (MkSinterID id_) = id_
 Show SinterID where
   show = genSinterID
 
+-- declared here, defined later
+data SinterGlobal : Type where
+
 -- an expression is a list of expressions, an ID, or a literal
 data Sexpr : Type where
   SexprList : (es : List Sexpr) -> Sexpr
   SexprID : (id_ : SinterID) -> Sexpr
   SexprLit : SinterLit -> Sexpr
-  SexprLet : (next : Sexpr) -> (defFun : Sexpr) -> Sexpr  -- let-in for sinter
+  SexprLet : (next : Sexpr) -> (defFun : SinterGlobal) -> Sexpr  -- let-in for sinter
 
 genSexpr : Sexpr -> String
 genSexpr (SexprList []) = "[]"
@@ -59,31 +62,11 @@ genSexpr (SexprLet next defFun) =
 Show Sexpr where
   show = genSexpr
 
-
------------------------
--- Sinter primitives --
------------------------
-
-sinterPrim : String -> Sexpr
-sinterPrim name = SexprID $ MkSinterID name
-
-||| Call the special sinter function for creating closures
-sinterClosureCon : Sexpr
-sinterClosureCon = sinterPrim ">makeClosure"
-
-||| Call the special sinter function for running or adding args to closures
-sinterClosureAdd : Sexpr
-sinterClosureAdd = sinterPrim ">closureAddElem"
-
-||| Crash sinter very inelegantly
-sinterCrash : Sexpr
-sinterCrash = SexprList [ sinterPrim "crash" ]
-
-
 -------------------------------
 -- Things that can be global --
 -------------------------------
 
+-- declared earlier, defined here
 data SinterGlobal = SinDef SinterID (List SinterID) Sexpr
                   | SinDecl SinterID (List SinterID)
                   | SinType SinterID (List SinterID)
@@ -115,6 +98,27 @@ Show SinterGlobal where
 testCase : SinterGlobal
 testCase = SinDef (MkSinterID "test") [(MkSinterID "arg1"), (MkSinterID "arg2")]
                   (SexprList [SexprLit (SinInt 1 2)])
+
+
+
+-----------------------
+-- Sinter primitives --
+-----------------------
+
+sinterPrim : String -> Sexpr
+sinterPrim name = SexprID $ MkSinterID name
+
+||| Call the special sinter function for creating closures
+sinterClosureCon : Sexpr
+sinterClosureCon = sinterPrim ">makeClosure"
+
+||| Call the special sinter function for running or adding args to closures
+sinterClosureAdd : Sexpr
+sinterClosureAdd = sinterPrim ">closureAddElem"
+
+||| Crash sinter very inelegantly
+sinterCrash : Sexpr
+sinterCrash = SexprList [ sinterPrim "crash" ]
 
 
 ------------------
@@ -185,7 +189,8 @@ superArgsToSinter ns = map mangle ns
 mutual
   -- Primitive Functions
 
-  primFnToSexpr : PrimFn arity -> Vect arity (Lifted (scope ++ args)) -> Sexpr
+  primFnToSexpr : {scope : _} -> {args : _}
+                -> PrimFn arity -> Vect arity (Lifted (scope ++ args)) -> Sexpr
   primFnToSexpr (Add ty) [x, y] =
     SexprList [ sinterPrim "add", liftedToSexpr x, liftedToSexpr y ]
 
@@ -259,27 +264,57 @@ mutual
 
   -- TODO
   primFnToSexpr (Cast x y) [z] = ?primFnToSexpr_rhs_36
-  primFnToSexpr BelieveMe xs = ?primFnToSexpr_rhs_37
+  primFnToSexpr BelieveMe [_, _, thing] = liftedToSexpr thing
+                                        -- ^ I believe this is correct?
 
   primFnToSexpr Crash [fc, reason] =
     sinterCrash
 
+  ||| Create a call to a function which evaluates `in` over `let`
+  |||   let f x = y in z
+  |||   is equivalent to
+  |||   (\f . z) (\x . y)
+  lletToSexpr : {scope : _} -> {args : _}
+              -> FC
+              -> (n : Name)
+              -> (existing : Lifted (scope ++ args))
+              -> (in_expr : Lifted (n :: (scope ++ args)))
+              -> Sexpr
+  lletToSexpr fc n existing in_expr =
+    let
+      -- containing IN
+      vars = scope ++ args
+      cursedFuncName = show fc ++ show n
+      cFunName = MkSinterID cursedFuncName
+      cFunArgs = (mangle n) :: map mangle vars
+      -- scope' = n :: scope      -- v doesn't work here
+      cFunBody = liftedToSexpr {scope=(n :: scope)} {args=args} in_expr
+      cFunDef = SinDef cFunName cFunArgs cFunBody
+
+      -- applying this
+      cFunCallArgs = liftedToSexpr {scope=scope} {args=args} existing
+      cFunCall = SexprList $ (SexprID cFunName)
+                             :: cFunCallArgs
+                             :: (map (SexprID . mangle) vars)
+    in
+      SexprLet cFunCall cFunDef
 
   -- Functions
 
   ||| Compile the definition to sexprs
-  liftedToSexpr : Lifted (scope ++ args) -> Sexpr
-  liftedToSexpr (LLocal fc p) = ?fcToSexpr
+  liftedToSexpr : {scope : _} -> {args : _} -> Lifted (scope ++ args) -> Sexpr
+  liftedToSexpr (LLocal {idx} fc p) = ?fcToSexpr
 
   -- complete function call
-  liftedToSexpr (LAppName fc _ n args) =
+  liftedToSexpr (LAppName fc _ n fArgs) =
     let
       funName = SexprID $ mangle n
-      funArgs = map liftedToSexpr args
-    in SexprList $ funName :: funArgs
+      funArgs = map (liftedToSexpr {scope=scope} {args=args}) fArgs
+    in
+      SexprList $ funName :: funArgs
 
   -- partial function call
-  liftedToSexpr (LUnderApp fc n missing args) =
+  liftedToSexpr (LUnderApp fc n missing fArgs) =
     let
       sinName  = SexprID $ mangle n
       sinMiss  = SexprLit $ SinInt (cast missing) nArgsWidth
@@ -288,7 +323,8 @@ mutual
       -- number of args function expects
       sinArity = SexprLit $ SinInt (cast (missing + nArgs)) nArgsWidth
       -- list of arguments
-      sinArgs  = SexprList $ map liftedToSexpr args
+      --sinArgs  = SexprList $ map liftedToSexpr fArgs
+      sinArgs  = SexprList $ map (liftedToSexpr {scope=scope} {args=args}) fArgs
     in
       -- make a closure containing the above info (sinter-specific closure)
       SexprList [sinterClosureCon , sinName , sinArity , sinNArgs , sinArgs]
@@ -306,12 +342,7 @@ mutual
 
   -- [ def fun [ a c ]
   --           [ fun2 a c b ] ]
-  liftedToSexpr (LLet fc n xstng_expr in_expr) =
-    let
-      cursedFuncName = show fc ++ show n
-      defCFun = ?cursedTodo -- SinDef (MkSinterID cursedFuncName)
-    in
-      ?liftedToSexpr_rhs_5
+  liftedToSexpr (LLet fc n existing in_expr) = lletToSexpr fc n existing in_expr
 
   liftedToSexpr (LCon fc n tag xs) = ?liftedToSexpr_rhs_6
 
@@ -327,33 +358,42 @@ mutual
     sinterCrash
 
 
-||| Constructors
-liftedConToSinter : (name : Name)
-                  -> (tag : Maybe Int)
+||| Compile a constructor's definition
+liftedConToSinter : (tag : Maybe Int)
                   -> (arity : Nat)
                   -> (nt : Maybe Nat)
                   -> Core SinterGlobal
-liftedConToSinter name tag arity nt = ?liftedConToSinter_rhs
+liftedConToSinter tag arity nt = ?liftedConToSinter_rhs
 
 
+||| Compile a pair of Name and its associated definition into a SinterGlobal,
+||| i.e.:
+|||   - mangle the Name into a valid sinter name
+|||   - compile the definition into a sexpr
 liftedToSinter : (Name, LiftedDef) -> Core SinterGlobal
--- function
+
+-- FUNCTIONS
 liftedToSinter (name, (MkLFun args scope body)) =
   let
     sinName = mangle name
     superArgs = args ++ reverse scope
     sinArgs = superArgsToSinter superArgs
     sinDefn = liftedToSexpr body
-  in pure $ SinDef sinName sinArgs sinDefn
+  in
+    pure $ SinDef sinName sinArgs sinDefn
 
--- constructor
+-- CONSTRUCTORS
 liftedToSinter (name, (MkLCon tag arity nt)) =
-  liftedConToSinter name tag arity nt
+  let
+    sinName = mangle name
+    sinDefn = liftedConToSinter tag arity nt
+  in
+    pure $ SinType sinName ?liftedConBody
 
--- ffi call
+-- FFI CALLS
 liftedToSinter (name, (MkLForeign ccs fargs x)) = ?liftedFFICalltoSinter
 
--- error
+-- GLOBAL ERRORS
 liftedToSinter (name, (MkLError x)) = ?liftedErrorToSinter
 
 
@@ -377,5 +417,4 @@ sinterCodegen = MkCG compile execute
 
 main : IO ()
 main = mainWithCodegens [("sinter", sinterCodegen)]
-
 
