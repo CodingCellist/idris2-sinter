@@ -337,21 +337,28 @@ mutual
     in
       SexprList [sinterClosureAdd, sinClosure, sinArg]
 
-  -- let a = b in c
-  -- \l c . (\f a . b) c
+  liftedToSexpr (LLet fc n existing in_expr) =
+    lletToSexpr fc n existing in_expr
 
-  -- [ def fun [ a c ]
-  --           [ fun2 a c b ] ]
-  liftedToSexpr (LLet fc n existing in_expr) = lletToSexpr fc n existing in_expr
+  liftedToSexpr (LCon fc n tag xs) =
+    let
+      (MkSinterID mn) = mangle n
+      name = MkSinterID $ mn ++ show tag
+      fArgs = map (liftedToSexpr {scope=scope} {args=args}) xs
+    in
+      SexprList $ (SexprID name) :: fArgs
 
-  liftedToSexpr (LCon fc n tag xs) = ?liftedToSexpr_rhs_6
-
-  liftedToSexpr (LOp fc _ x xs) = primFnToSexpr x xs
+  liftedToSexpr (LOp fc _ x xs) =
+    primFnToSexpr x xs
 
   liftedToSexpr (LExtPrim fc _ p xs) = ?liftedToSexpr_rhs_8
+
   liftedToSexpr (LConCase fc x xs y) = ?liftedToSexpr_rhs_9
+
   liftedToSexpr (LConstCase fc x xs y) = ?liftedToSexpr_rhs_10
+
   liftedToSexpr (LPrimVal fc x) = ?liftedToSexpr_rhs_11
+
   liftedToSexpr (LErased fc) = ?liftedToSexpr_rhs_12
 
   liftedToSexpr (LCrash fc x) =
@@ -406,6 +413,8 @@ compile : Ref Ctxt Defs -> (tmpDir : String) -> (outputDir : String) ->
 compile context tmpDir outputDir term outfile =
   do compData <- getCompileData False Lifted term
      let defs = lambdaLifted compData
+     sinterGlobs <- traverse liftedToSinter defs
+     -- readyForCG <- traverse bubbleLets sinterGlobs
      ?compile_rhs
 
 execute : Ref Ctxt Defs -> (tmpDir : String) -> ClosedTerm -> Core ()
