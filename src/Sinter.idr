@@ -7,6 +7,8 @@ import Data.Vect
 import Data.String.Extra
 
 import Core.Context
+import Core.CompileExpr
+
 import Compiler.LambdaLift
 import Compiler.Common
 import Idris.Driver
@@ -20,7 +22,8 @@ sqBrack s = "[ " ++ s ++ " ]"
 
 -- only literals in sinter are ints
 data SinterLit
-  = SinInt Int Nat    -- Int is value then width
+  = SinInt Int Nat    -- TODO: Int is value then width
+  | SinStr String
 
 -- IDs are basically strings (not really, TODO)
 data SinterID = MkSinterID String
@@ -53,7 +56,10 @@ genSexpr (SexprList es) =
 genSexpr (SexprID id_) = show id_
 
 genSexpr (SexprLit (SinInt v w)) =
-  "( " ++ show v ++ "; " ++ show w ++ " )"
+  "( " ++ show w ++ "; " ++ show v ++ " )"
+
+genSexpr (SexprLit (SinStr s)) =
+  show s
 
 -- TODO
 genSexpr (SexprLet next defFun) =
@@ -85,7 +91,7 @@ genSinter (SinDecl fName args) =
     argsStr = sqBrack $ join " " args'
   in sqBrack $ "dec " ++ show fName ++ " " ++ argsStr
 
-genSinter (SinType tName membs) = ?genSinter_rhs_3
+genSinter (SinType tName membs) =
   let
     membs' = map show membs
     membsStr = sqBrack $ join " " membs'
@@ -105,8 +111,13 @@ testCase = SinDef (MkSinterID "test") [(MkSinterID "arg1"), (MkSinterID "arg2")]
 -- Sinter primitives --
 -----------------------
 
+||| Primitive implemented in sinter
 sinterPrim : String -> Sexpr
 sinterPrim name = SexprID $ MkSinterID name
+
+||| Primitive supplied by stdlib
+sinterStdlib : String -> Sexpr
+sinterStdlib name = SexprID $ MkSinterID ("stdlib_" ++ name)
 
 ||| Call the special sinter function for creating closures
 sinterClosureCon : Sexpr
@@ -118,7 +129,7 @@ sinterClosureAdd = sinterPrim ">closureAddElem"
 
 ||| Crash sinter very inelegantly
 sinterCrash : Sexpr
-sinterCrash = SexprList [ sinterPrim "crash" ]
+sinterCrash = SexprList [ sinterPrim "CRASH" ]
 
 
 ------------------
@@ -176,6 +187,9 @@ mangle (WithBlock x i) = MkSinterID $ "with_" ++ x ++ "-" ++ (show i)
 mangle (Resolved i) = MkSinterID $ "resolved_" ++ (show i)
 
 
+idrisWorld : Sexpr
+idrisWorld = SexprID $ MkSinterID "**IDRIS_WORLD**"
+
 ||| Assume < 2^31 number of args to any function (seriously, what would you do
 ||| with 2^31 args?...)
 nArgsWidth : Nat
@@ -186,81 +200,107 @@ superArgsToSinter : List Name -> List SinterID
 superArgsToSinter ns = map mangle ns
 
 
+-- Constants
+
+constantToSexpr : Constant -> Sexpr
+constantToSexpr (I x) = ?sexprConstI
+constantToSexpr (BI x) = ?sexprConstBI
+constantToSexpr (B8 x) = SexprLit $ SinInt (cast x) 8
+constantToSexpr (B16 x) = SexprLit $ SinInt (cast x) 16
+constantToSexpr (B32 x) = SexprLit $ SinInt (cast x) 32
+constantToSexpr (B64 x) = SexprLit $ SinInt (cast x) 64
+constantToSexpr (Str x) = SexprLit $ SinStr x
+constantToSexpr (Ch x) = ?constantToSexpr_rhs_8
+constantToSexpr (Db x) = ?constantToSexpr_rhs_9
+constantToSexpr WorldVal = idrisWorld
+constantToSexpr IntType = ?constantToSexpr_rhs_11
+constantToSexpr IntegerType = ?constantToSexpr_rhs_12
+constantToSexpr Bits8Type = ?constantToSexpr_rhs_13
+constantToSexpr Bits16Type = ?constantToSexpr_rhs_14
+constantToSexpr Bits32Type = ?constantToSexpr_rhs_15
+constantToSexpr Bits64Type = ?constantToSexpr_rhs_16
+constantToSexpr StringType = ?constantToSexpr_rhs_17
+constantToSexpr CharType = ?constantToSexpr_rhs_18
+constantToSexpr DoubleType = ?constantToSexpr_rhs_19
+constantToSexpr WorldType = ?constantToSexpr_rhs_20
+
+
 mutual
   -- Primitive Functions
 
   primFnToSexpr : {scope : _} -> {args : _}
                 -> PrimFn arity -> Vect arity (Lifted (scope ++ args)) -> Sexpr
   primFnToSexpr (Add ty) [x, y] =
-    SexprList [ sinterPrim "add", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "add", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (Sub ty) [x, y] =
-    SexprList [ sinterPrim "sub", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "sub", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (Mul ty) [x, y] =
-    SexprList [ sinterPrim "mul", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "mul", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (Div ty) [x, y] =
-    SexprList [ sinterPrim "div", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "div", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (Mod ty) [x, y] =
-    SexprList [ sinterPrim "mod", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "mod", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (Neg ty) [x] =
-    SexprList [ sinterPrim "neg", liftedToSexpr x ]
+    SexprList [ sinterStdlib "neg", liftedToSexpr x ]
 
   primFnToSexpr (ShiftL ty) [x, y] =
-    SexprList [ sinterPrim "shiftl", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "shiftl", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (ShiftR ty) [x, y] =
-    SexprList [ sinterPrim "shiftr", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "shiftr", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (BAnd ty) [x, y] =
-    SexprList [ sinterPrim "bitwAnd", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "bitwAnd", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (BOr ty) [x, y] =
-    SexprList [ sinterPrim "bitwOr", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "bitwOr", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (BXOr ty) [x, y] =
-    SexprList [ sinterPrim "bitwXor", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "bitwXor", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (LT ty) [x, y] =
-    SexprList [ sinterPrim "lt", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "lt", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (LTE ty) [x, y] =
-    SexprList [ sinterPrim "lte", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "lte", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (EQ ty) [x, y] =
-    SexprList [ sinterPrim "eq", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "eq", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (GTE ty) [x, y] =
-    SexprList [ sinterPrim "gte", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "gte", liftedToSexpr x, liftedToSexpr y ]
 
   primFnToSexpr (GT ty) [x, y] =
-    SexprList [ sinterPrim "gt", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "gt", liftedToSexpr x, liftedToSexpr y ]
 
   -- TODO
-  primFnToSexpr StrLength xs = ?primFnToSexpr_rhs_17
-  primFnToSexpr StrHead xs = ?primFnToSexpr_rhs_18
-  primFnToSexpr StrTail xs = ?primFnToSexpr_rhs_19
-  primFnToSexpr StrIndex xs = ?primFnToSexpr_rhs_20
-  primFnToSexpr StrCons xs = ?primFnToSexpr_rhs_21
-  primFnToSexpr StrAppend xs = ?primFnToSexpr_rhs_22
-  primFnToSexpr StrReverse xs = ?primFnToSexpr_rhs_23
-  primFnToSexpr StrSubstr xs = ?primFnToSexpr_rhs_24
+  primFnToSexpr StrLength [s] = ?sinterStrLen
+  primFnToSexpr StrHead [s] = ?sinterStrHead
+  primFnToSexpr StrTail [s] = ?sinterStrTail
+  primFnToSexpr StrIndex [s, i] = ?sinterStrIndex
+  primFnToSexpr StrCons [s1, s2] = ?sinterStrCons
+  primFnToSexpr StrAppend [s1, s2] =
+    SexprList [ sinterStdlib "strAppend", liftedToSexpr s1, liftedToSexpr s2 ]
+  primFnToSexpr StrReverse [s] = ?sinterStrReverse
+  primFnToSexpr StrSubstr [i, j, s] = ?sinterSubstr
 
   -- TODO
-  primFnToSexpr DoubleExp xs = ?primFnToSexpr_rhs_25
-  primFnToSexpr DoubleLog xs = ?primFnToSexpr_rhs_26
-  primFnToSexpr DoubleSin xs = ?primFnToSexpr_rhs_27
-  primFnToSexpr DoubleCos xs = ?primFnToSexpr_rhs_28
-  primFnToSexpr DoubleTan xs = ?primFnToSexpr_rhs_29
-  primFnToSexpr DoubleASin xs = ?primFnToSexpr_rhs_30
-  primFnToSexpr DoubleACos xs = ?primFnToSexpr_rhs_31
-  primFnToSexpr DoubleATan xs = ?primFnToSexpr_rhs_32
-  primFnToSexpr DoubleSqrt xs = ?primFnToSexpr_rhs_33
-  primFnToSexpr DoubleFloor xs = ?primFnToSexpr_rhs_34
-  primFnToSexpr DoubleCeiling xs = ?primFnToSexpr_rhs_35
+  primFnToSexpr DoubleExp [d] = ?primFnToSexpr_rhs_25
+  primFnToSexpr DoubleLog [d] = ?primFnToSexpr_rhs_26
+  primFnToSexpr DoubleSin [d] = ?primFnToSexpr_rhs_27
+  primFnToSexpr DoubleCos [d] = ?primFnToSexpr_rhs_28
+  primFnToSexpr DoubleTan [d] = ?primFnToSexpr_rhs_29
+  primFnToSexpr DoubleASin [d] = ?primFnToSexpr_rhs_30
+  primFnToSexpr DoubleACos [d] = ?primFnToSexpr_rhs_31
+  primFnToSexpr DoubleATan [d] = ?primFnToSexpr_rhs_32
+  primFnToSexpr DoubleSqrt [d] = ?primFnToSexpr_rhs_33
+  primFnToSexpr DoubleFloor [d] = ?primFnToSexpr_rhs_34
+  primFnToSexpr DoubleCeiling [d] = ?primFnToSexpr_rhs_35
 
   -- TODO
   primFnToSexpr (Cast x y) [z] = ?primFnToSexpr_rhs_36
@@ -272,7 +312,7 @@ mutual
 
   ||| Create a call to a function which evaluates `in` over `let`
   |||   let f x = y in z
-  |||   is equivalent to
+  ||| is equivalent to
   |||   (\f . z) (\x . y)
   lletToSexpr : {scope : _} -> {args : _}
               -> FC
@@ -287,7 +327,6 @@ mutual
       cursedFuncName = show fc ++ show n
       cFunName = MkSinterID cursedFuncName
       cFunArgs = (mangle n) :: map mangle vars
-      -- scope' = n :: scope      -- v doesn't work here
       cFunBody = liftedToSexpr {scope=(n :: scope)} {args=args} in_expr
       cFunDef = SinDef cFunName cFunArgs cFunBody
 
@@ -303,7 +342,12 @@ mutual
 
   ||| Compile the definition to sexprs
   liftedToSexpr : {scope : _} -> {args : _} -> Lifted (scope ++ args) -> Sexpr
-  liftedToSexpr (LLocal {idx} fc p) = ?fcToSexpr
+  -- idx points to right variable; de bruijn index
+  liftedToSexpr (LLocal {idx} fc p) = -- ?llocalToSinter
+    case take (S idx) (scope ++ args) of
+         -- FIXME: this is very naughty and should be handled better
+         [] => assert_total $ idris_crash "scope ++ args did not contain name"
+         (n :: _) => SexprID $ mangle n
 
   -- complete function call
   liftedToSexpr (LAppName fc _ n fArgs) =
@@ -337,9 +381,11 @@ mutual
     in
       SexprList [sinterClosureAdd, sinClosure, sinArg]
 
+  -- let expressions
   liftedToSexpr (LLet fc n existing in_expr) =
     lletToSexpr fc n existing in_expr
 
+  -- constructor calls
   liftedToSexpr (LCon fc n tag xs) =
     let
       (MkSinterID mn) = mangle n
@@ -348,6 +394,7 @@ mutual
     in
       SexprList $ (SexprID name) :: fArgs
 
+  -- primitive operators
   liftedToSexpr (LOp fc _ x xs) =
     primFnToSexpr x xs
 
@@ -357,9 +404,10 @@ mutual
 
   liftedToSexpr (LConstCase fc x xs y) = ?liftedToSexpr_rhs_10
 
-  liftedToSexpr (LPrimVal fc x) = ?liftedToSexpr_rhs_11
+  liftedToSexpr (LPrimVal fc x) = constantToSexpr x
 
-  liftedToSexpr (LErased fc) = ?liftedToSexpr_rhs_12
+  liftedToSexpr (LErased fc) =
+    SexprLit $ SinInt 0 0
 
   liftedToSexpr (LCrash fc x) =
     sinterCrash
