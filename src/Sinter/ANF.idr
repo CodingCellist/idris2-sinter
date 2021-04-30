@@ -1,6 +1,6 @@
 -- Idris2
 
-module Sinter
+module Sinter.ANF
 
 import Data.List
 import Data.Vect
@@ -9,7 +9,7 @@ import Data.String.Extra
 import Core.Context
 import Core.CompileExpr
 
-import Compiler.LambdaLift
+import Compiler.ANF
 import Compiler.Common
 import Idris.Driver
 
@@ -203,7 +203,7 @@ superArgsToSinter ns = map mangle ns
 -- Constants
 
 constantToSexpr : Constant -> Sexpr
-constantToSexpr (I x) = SexprLit $ SinInt (cast x) 64
+constantToSexpr (I x) = ?sexprConstI
 constantToSexpr (BI x) = ?sexprConstBI
 constantToSexpr (B8 x) = SexprLit $ SinInt (cast x) 8
 constantToSexpr (B16 x) = SexprLit $ SinInt (cast x) 16
@@ -225,58 +225,65 @@ constantToSexpr DoubleType = ?constantToSexpr_rhs_19
 constantToSexpr WorldType = ?constantToSexpr_rhs_20
 
 
+intNameToSinterID : Int -> SinterID
+intNameToSinterID i = MkSinterID $ "a" ++ show i
+
+
+aVarToSexpr : AVar -> Sexpr
+aVarToSexpr (ALocal i) = SexprID $ intNameToSinterID i
+aVarToSexpr ANull = SexprLit $ SinInt 0 1
+
 mutual
   -- Primitive Functions
 
-  primFnToSexpr : {scope : _} -> {args : _}
-                -> PrimFn arity -> Vect arity (Lifted (scope ++ args)) -> Sexpr
+  primFnToSexpr : PrimFn arity -> Vect arity AVar -> Sexpr
   primFnToSexpr (Add ty) [x, y] =
-    SexprList [ sinterStdlib "add", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "add", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (Sub ty) [x, y] =
-    SexprList [ sinterStdlib "sub", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "sub", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (Mul ty) [x, y] =
-    SexprList [ sinterStdlib "mul", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "mul", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (Div ty) [x, y] =
-    SexprList [ sinterStdlib "div", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "div", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (Mod ty) [x, y] =
-    SexprList [ sinterStdlib "mod", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "mod", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (Neg ty) [x] =
-    SexprList [ sinterStdlib "neg", liftedToSexpr x ]
+    SexprList [ sinterStdlib "neg", aVarToSexpr x ]
 
   primFnToSexpr (ShiftL ty) [x, y] =
-    SexprList [ sinterStdlib "shiftl", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "shiftl", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (ShiftR ty) [x, y] =
-    SexprList [ sinterStdlib "shiftr", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "shiftr", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (BAnd ty) [x, y] =
-    SexprList [ sinterStdlib "bitwAnd", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "bitwAnd", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (BOr ty) [x, y] =
-    SexprList [ sinterStdlib "bitwOr", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "bitwOr", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (BXOr ty) [x, y] =
-    SexprList [ sinterStdlib "bitwXor", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "bitwXor", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (LT ty) [x, y] =
-    SexprList [ sinterStdlib "lt", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "lt", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (LTE ty) [x, y] =
-    SexprList [ sinterStdlib "lte", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "lte", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (EQ ty) [x, y] =
-    SexprList [ sinterStdlib "eq", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "eq", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (GTE ty) [x, y] =
-    SexprList [ sinterStdlib "gte", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "gte", aVarToSexpr x, aVarToSexpr y ]
 
   primFnToSexpr (GT ty) [x, y] =
-    SexprList [ sinterStdlib "gt", liftedToSexpr x, liftedToSexpr y ]
+    SexprList [ sinterStdlib "gt", aVarToSexpr x, aVarToSexpr y ]
 
   -- TODO
   primFnToSexpr StrLength [s] = ?sinterStrLen
@@ -285,7 +292,7 @@ mutual
   primFnToSexpr StrIndex [s, i] = ?sinterStrIndex
   primFnToSexpr StrCons [s1, s2] = ?sinterStrCons
   primFnToSexpr StrAppend [s1, s2] =
-    SexprList [ sinterStdlib "strAppend", liftedToSexpr s1, liftedToSexpr s2 ]
+    SexprList [ sinterStdlib "strAppend", aVarToSexpr s1, aVarToSexpr s2 ]
   primFnToSexpr StrReverse [s] = ?sinterStrReverse
   primFnToSexpr StrSubstr [i, j, s] = ?sinterSubstr
 
@@ -304,172 +311,102 @@ mutual
 
   -- TODO
   primFnToSexpr (Cast x y) [z] = ?primFnToSexpr_rhs_36
-  primFnToSexpr BelieveMe [_, _, thing] = liftedToSexpr thing
+  primFnToSexpr BelieveMe [_, _, thing] = aVarToSexpr thing
                                         -- ^ I believe this is correct?
 
   primFnToSexpr Crash [fc, reason] =
     sinterCrash
 
+
+
   ||| Create a call to a function which evaluates `in` over `let`
   |||   let f x = y in z
   ||| is equivalent to
   |||   (\f . z) (\x . y)
-  lletToSexpr : {scope : _} -> {args : _}
-              -> FC
-              -> (n : Name)
-              -> (existing : Lifted (scope ++ args))
-              -> (in_expr : Lifted (n :: (scope ++ args)))
-              -> Sexpr
-  lletToSexpr fc n existing in_expr =
+  aLetToSexpr : FC -> (var : Int) -> (val : ANF) -> (in_expr : ANF) -> Sexpr
+  aLetToSexpr fc var val in_expr =
     let
-      -- containing IN
-      vars = scope ++ args
-      cursedFuncName = show fc ++ show n
-      cFunName = MkSinterID cursedFuncName
-      cFunArgs = (mangle n) :: map mangle vars
-      cFunBody = liftedToSexpr {scope=(n :: scope)} {args=args} in_expr
-      cFunDef = SinDef cFunName cFunArgs cFunBody
-
-      -- applying this
-      cFunCallArgs = liftedToSexpr {scope=scope} {args=args} existing
-      cFunCall = SexprList $ (SexprID cFunName)
-                             :: cFunCallArgs
-                             :: (map (SexprID . mangle) vars)
+      varName = intNameToSinterID var
+      cFunName = MkSinterID $ ">>let_" ++ ("a" ++ show var) ++ "_<<in_" ++ show fc
+      val_sexpr = anfToSexpr val
+      in_sexpr = anfToSexpr in_expr
+      --cFunDef = SinDef $ cFunName val_sexpr
     in
-      SexprLet cFunCall cFunDef
+      ?aLetToSexpr_rhs
 
-  -- Functions
+  anfToSexpr : ANF -> Sexpr
+  anfToSexpr (AV fc x) =
+    aVarToSexpr x
 
-  ||| Compile the definition to sexprs
-  liftedToSexpr : {scope : _} -> {args : _} -> Lifted (scope ++ args) -> Sexpr
-  -- idx points to right variable; de bruijn index
-  liftedToSexpr (LLocal {idx} fc p) = -- ?llocalToSinter
-    case take (S idx) (scope ++ args) of
-         -- FIXME: this is very naughty and should be handled better
-         [] => assert_total $ idris_crash "scope ++ args did not contain name"
-         (n :: _) => SexprID $ mangle n
+  anfToSexpr (AAppName fc _ n fArgs) =
+      let
+        funName = SexprID $ mangle n
+        funArgs = map aVarToSexpr fArgs
+      in
+        SexprList $ funName :: funArgs
 
-  -- complete function call
-  liftedToSexpr (LAppName fc _ n fArgs) =
-    let
-      funName = SexprID $ mangle n
-      funArgs = map (liftedToSexpr {scope=scope} {args=args}) fArgs
-    in
-      SexprList $ funName :: funArgs
+  anfToSexpr (AUnderApp fc n missing partArgs) =
+      let
+        sinName  = SexprID $ mangle n
+        sinMiss  = SexprLit $ SinInt (cast missing) nArgsWidth
+        nArgs    = length partArgs
+        sinNArgs = SexprLit $ SinInt (cast nArgs) nArgsWidth
+        -- number of args function expects
+        sinArity = SexprLit $ SinInt (cast (missing + nArgs)) nArgsWidth
+        -- list of arguments
+        sinArgs  = SexprList $ map aVarToSexpr partArgs
+      in
+        -- make a closure containing the above info (sinter-specific closure)
+        SexprList [sinterClosureCon , sinName , sinArity , sinNArgs , sinArgs]
 
-  -- partial function call
-  liftedToSexpr (LUnderApp fc n missing fArgs) =
-    let
-      sinName  = SexprID $ mangle n
-      sinMiss  = SexprLit $ SinInt (cast missing) nArgsWidth
-      nArgs    = length args
-      sinNArgs = SexprLit $ SinInt (cast nArgs) nArgsWidth
-      -- number of args function expects
-      sinArity = SexprLit $ SinInt (cast (missing + nArgs)) nArgsWidth
-      -- list of arguments
-      --sinArgs  = SexprList $ map liftedToSexpr fArgs
-      sinArgs  = SexprList $ map (liftedToSexpr {scope=scope} {args=args}) fArgs
-    in
-      -- make a closure containing the above info (sinter-specific closure)
-      SexprList [sinterClosureCon , sinName , sinArity , sinNArgs , sinArgs]
 
   -- application of a closure to another argument; potentially to the last arg
-  liftedToSexpr (LApp fc _ closure arg) =
+  anfToSexpr (AApp fc _ closure arg) =
     let
-      sinClosure = liftedToSexpr closure
-      sinArg = liftedToSexpr arg
+      sinClosure = aVarToSexpr closure
+      sinArg = aVarToSexpr arg
     in
       SexprList [sinterClosureAdd, sinClosure, sinArg]
 
-  -- let expressions
-  liftedToSexpr (LLet fc n existing in_expr) =
-    lletToSexpr fc n existing in_expr
 
-  -- constructor calls
-  liftedToSexpr (LCon fc n tag xs) =
+  anfToSexpr (ALet fc var let_expr in_expr) =
+    aLetToSexpr fc var let_expr in_expr
+
+  anfToSexpr (ACon fc n tag xs) =
     let
       (MkSinterID mn) = mangle n
       name = MkSinterID $ mn ++ show tag
-      fArgs = map (liftedToSexpr {scope=scope} {args=args}) xs
+      fArgs = map aVarToSexpr xs
     in
       SexprList $ (SexprID name) :: fArgs
 
-  -- primitive operators
-  liftedToSexpr (LOp fc _ x xs) =
-    primFnToSexpr x xs
+  anfToSexpr (AOp fc _ fn args) = primFnToSexpr fn args
 
-  liftedToSexpr (LExtPrim fc _ p xs) = ?liftedToSexpr_rhs_8
+  anfToSexpr (AExtPrim fc _ n args) = ?anfToSexpr_rhs_8
 
-  liftedToSexpr (LConCase fc x xs y) = ?liftedToSexpr_rhs_9
+  anfToSexpr (AConCase fc avar alts m_default) = ?anfToSexpr_rhs_9
 
-  liftedToSexpr (LConstCase fc lvars lConAlts m_default) =
-    let
-      comparator = liftedToSexpr lvars
-    in
-      case m_default of
-           Nothing => sinterCrash
-           (Just x) => ifHelper comparator lConAlts (liftedToSexpr x)
+  anfToSexpr (AConstCase fc x xs y) = ?anfToSexpr_rhs_10
 
-  liftedToSexpr (LPrimVal fc x) = constantToSexpr x
+  anfToSexpr (APrimVal fc c) = constantToSexpr c
 
-  liftedToSexpr (LErased fc) =
+  anfToSexpr (AErased fc) =
     SexprLit $ SinInt 0 0
 
-  liftedToSexpr (LCrash fc x) =
+  anfToSexpr (ACrash fc x) =
     sinterCrash
 
-  ifHelper : {scope : _} -> {args : _}
-           -> Sexpr -> List (LiftedConstAlt (scope ++ args)) -> Sexpr -> Sexpr
-  ifHelper x [] def = def
-  ifHelper x ((MkLConstAlt c body) :: alts) def =
-    let
-      sinC = constantToSexpr c
-      sinBody = liftedToSexpr body
-      ifCond = SexprList [ (sinterStdlib "eq") , x , sinC ]
-      elseBody = ifHelper x alts def
-    in
-      SexprList [ SexprID $ MkSinterID "if" , ifCond, sinBody , elseBody ,
-                  SexprID $ MkSinterID "32" ]
-
-
-||| Compile a constructor's definition
-liftedConToSinter : (tag : Maybe Int)
-                  -> (arity : Nat)
-                  -> (nt : Maybe Nat)
-                  -> Core SinterGlobal
-liftedConToSinter tag arity nt = ?liftedConToSinter_rhs
-
-
-||| Compile a pair of Name and its associated definition into a SinterGlobal,
-||| i.e.:
-|||   - mangle the Name into a valid sinter name
-|||   - compile the definition into a sexpr
-liftedToSinter : (Name, LiftedDef) -> Core SinterGlobal
-
--- FUNCTIONS
-liftedToSinter (name, (MkLFun args scope body)) =
+compileANF : (Name, ANFDef) -> Core SinterGlobal
+compileANF (n, (MkAFun args body)) =
   let
-    sinName = mangle name
-    superArgs = args ++ reverse scope
-    sinArgs = superArgsToSinter superArgs
-    sinDefn = liftedToSexpr body
+    sinName = mangle n
+    sinArgs = map intNameToSinterID args
+    sinBody = anfToSexpr body
   in
-    pure $ SinDef sinName sinArgs sinDefn
-
--- CONSTRUCTORS
-liftedToSinter (name, (MkLCon tag arity nt)) =
-  let
-    sinName = mangle name
-    sinDefn = liftedConToSinter tag arity nt
-  in
-    pure $ SinType sinName ?liftedConBody
-
--- FFI CALLS
-liftedToSinter (name, (MkLForeign ccs fargs x)) = ?liftedFFICalltoSinter
-
--- GLOBAL ERRORS
-liftedToSinter (name, (MkLError x)) = ?liftedErrorToSinter
-
+    pure $ SinDef sinName sinArgs sinBody
+compileANF (n, (MkACon tag arity def)) = ?compileANF_rhs_3
+compileANF (n, (MkAForeign ccs fargs x)) = ?compileANF_rhs_4
+compileANF (n, (MkAError e)) = ?compileANF_rhs_5
 
 ----------------
 -- TOP OF API --
@@ -478,9 +415,9 @@ liftedToSinter (name, (MkLError x)) = ?liftedErrorToSinter
 compile : Ref Ctxt Defs -> (tmpDir : String) -> (outputDir : String) ->
         ClosedTerm -> (outfile : String) -> Core (Maybe String)
 compile context tmpDir outputDir term outfile =
-  do compData <- getCompileData False Lifted term
-     let defs = lambdaLifted compData
-     sinterGlobs <- traverse liftedToSinter defs
+  do compData <- getCompileData False ANF term
+     let defs = anf compData
+     sinterGlobs <- traverse compileANF defs
      -- readyForCG <- traverse bubbleLets sinterGlobs
      ?compile_rhs
 
