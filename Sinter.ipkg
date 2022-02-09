@@ -1,0 +1,7 @@
+package Sinter
+
+opts = "-p contrib -p idris2 -p network"
+
+sourcedir = "src"
+modules = Sinter, Idris2Sinter, Sinter.ANF
+

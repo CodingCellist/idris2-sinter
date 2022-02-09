@@ -1,0 +1,16 @@
+[ { "name": "idris2-sinter"
+  , "authors": [ "Tom Harley", "Thomas E. Hansen" ]
+  , "license": "BSD-3-Clause"
+  , "deps": [ { "name":"idris2"
+              , "legacy": true
+              }
+            , { "name": "contrib"
+              , "legacy": true
+              }
+            ]
+  , "modules": [ "Sinter"
+               , "Sinter.ANF"
+               , "Idris2Sinter"
+               ]
+  }
+]

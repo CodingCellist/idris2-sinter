@@ -1,4 +1,0 @@
-package Sinter
-
-opts = "-p contrib -p idris2 -p network"
-
