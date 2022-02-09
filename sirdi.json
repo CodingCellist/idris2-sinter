@@ -7,9 +7,13 @@
             , { "name": "contrib"
               , "legacy": true
               }
+            , { "name": "network"
+              , "legacy": true
+              }
             ]
   , "modules": [ "Sinter"
                , "Idris2Sinter"
                ]
+  , "main": "Idris2Sinter"
   }
 ]

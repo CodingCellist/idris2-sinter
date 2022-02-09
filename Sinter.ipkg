@@ -19,11 +19,11 @@ langversion >= 0.5.1
 modules = Sinter, Idris2Sinter
 
 -- main file (i.e. file to load at REPL)
--- main =
+main = Idris2Sinter
 
 -- name of executable
--- executable =
-opts = "-p idris2 -p contrib"
+executable = "idris2-sinter"
+opts = "-p idris2 -p contrib -p network"
 sourcedir = "src"
 -- builddir =
 -- outputdir =
