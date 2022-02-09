@@ -2,7 +2,7 @@
 
 ||| Contains types to desribe Sinter syntax trees, and functions for
 ||| converting those trees into text.
-module Sinter2
+module Sinter
 
 import Data.String.Extra -- for join
 import Data.String -- for lines

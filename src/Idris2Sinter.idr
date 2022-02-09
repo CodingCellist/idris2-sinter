@@ -11,7 +11,7 @@ import Data.Vect
 import Data.String.Extra -- for join
 import Idris.Driver -- for mainWithCodegens
 
-import Sinter2
+import Sinter
 
 {- FIXME
  - 
