@@ -9,7 +9,6 @@
               }
             ]
   , "modules": [ "Sinter"
-               , "Sinter.ANF"
                , "Idris2Sinter"
                ]
   }

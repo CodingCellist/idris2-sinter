@@ -1,7 +1,47 @@
 package Sinter
+-- version =
+authors = "Tom Harley, Thomas E. Hansen"
+-- maintainers =
+license = "BSD-3-Clause"
+-- brief =
+-- readme =
+-- homepage =
+sourceloc = "https://github.com/CodingCellist/idris2-sinter"
+bugtracker = "https://github.com/CodingCellist/idris2-sinter/issues"
 
-opts = "-p contrib -p idris2 -p network"
+-- the Idris2 version required (e.g. langversion >= 0.5.1)
+langversion >= 0.5.1
 
+-- packages to add to search path
+-- depends =
+
+-- modules to install
+modules = Sinter, Idris2Sinter
+
+-- main file (i.e. file to load at REPL)
+-- main =
+
+-- name of executable
+-- executable =
+opts = "-p idris2 -p contrib"
 sourcedir = "src"
-modules = Sinter, Idris2Sinter, Sinter.ANF
+-- builddir =
+-- outputdir =
 
+-- script to run before building
+-- prebuild =
+
+-- script to run after building
+-- postbuild =
+
+-- script to run after building, before installing
+-- preinstall =
+
+-- script to run after installing
+-- postinstall =
+
+-- script to run before cleaning
+-- preclean =
+
+-- script to run after cleaning
+-- postclean =
