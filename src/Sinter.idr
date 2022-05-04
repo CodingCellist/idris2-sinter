@@ -59,7 +59,7 @@ genSexpr (SinterList exprs) = mExpr $ map genSexpr exprs
 genSexpr (SinterPair (x, y)) = sExpr (genSexpr x) (genSexpr y)
 
 genSexpr (SinterLiteralExpr expr) = case expr of
-  SinterInt v w => sExpr (show v) (show w)
+  SinterInt v w => sExpr (show w) (show v)
   SinterStr v => show v
 
 genSexpr (SinterExprID id') = genSID id'
@@ -82,10 +82,6 @@ genTopLevel (SinterDec id' ns)
 genTopLevel (SinterType id' ns)
   = mExpr [ "type", genSID id', mExprSID ns ] ++ "\n"
 
-reverseTopLevel : List SinterTopLevel -> List SinterTopLevel
-reverseTopLevel = reverse
-
 public export
 gen : List SinterTopLevel -> String
 gen xs = concatMap genTopLevel $ reverse xs
-

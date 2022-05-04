@@ -12,6 +12,7 @@ import Data.String.Extra -- for join
 import Idris.Driver -- for mainWithCodegens
 
 import Sinter
+import TagList
 
 {- FIXME
  - 
@@ -86,7 +87,7 @@ translateConstant c = case c of
   Ch  x => constInt (cast x) 64
   Db  x => ?constantToSexpr_rhs_9
 
-  WorldVal => SinterExprID $ MkSinterID "WORLD"
+  WorldVal => constInt 0 8
   IntType => ?constantToSexpr_rhs_11
   Int8Type => ?fhaconstantToSexpr_rhs_13
   Int16Type => ?cdahfuoonstantToSexpr_rhs_14
@@ -113,47 +114,66 @@ sinterID : String -> SinterExpr
 sinterID = SinterExprID . MkSinterID
 
 -- Forward declaration; definition below.
-transExpr : {vars : _} -> Lifted vars -> SinterExpr
+transExpr : {vars : _} -> TagList -> Lifted vars -> (SinterExpr, TagList)
 
-simpleTPF : {vars : _} -> String -> Vect a (Lifted vars) -> SinterExpr
-simpleTPF fn args
-  = SinterList $ sinterPrimFn fn :: toList (map transExpr args)
+tmap : (TagList -> a -> (b, TagList)) -> List a -> TagList -> (List b, TagList)
+tmap f [] tl = ([], tl)
+tmap f (x :: xs) tl =
+  let
+    (sin, tl') = f tl x
+    (sins, tls) = tmap f xs tl'
+  in
+    (sin :: sins, tls)
 
-transPrimFn : {vars : _} -> PrimFn a -> Vect a (Lifted vars) -> SinterExpr
-transPrimFn = simpleTPF . show
+simpleTPF : {vars : _} -> TagList -> String -> Vect a (Lifted vars) ->
+            (SinterExpr, TagList)
+simpleTPF tags fn args =
+  let
+    (sins, tags') = tmap transExpr (toList args) tags
+  in
+    (SinterList $ sinterPrimFn fn :: sins, tags')
 
-transLet : {vars : _} -> (x : Name) -> Lifted vars -> Lifted (x::vars) -> SinterExpr
-transLet new old in_expr =
+transPrimFn : {vars : _} -> TagList -> PrimFn a -> Vect a (Lifted vars) ->
+              (SinterExpr, TagList)
+transPrimFn tags = (simpleTPF tags) . show
+
+transLet : {vars : _} -> TagList -> (x : Name) -> Lifted vars ->
+           Lifted (x :: vars) -> (SinterExpr, TagList)
+transLet tags new old in_expr =
   let
     let' = sinterID "let"
     new' = mangleToSinterExpr new
-    old' = transExpr old
-    in_expr' = transExpr in_expr
+    (old', tags) = transExpr tags old
+    (in_expr', tags) = transExpr tags in_expr
   in
-    SinterList [ let', SinterPair (new', old'), in_expr' ]
+    (SinterList [ let', SinterPair (new', old'), in_expr' ], tags)
 
-transLConAlt : {vars : _} -> SinterExpr -> LiftedConAlt vars -> SinterExpr
-transLConAlt n (MkLConAlt cname _ tag args expr) =
+transLConAlt : {vars : _} -> SinterExpr -> TagList -> LiftedConAlt vars ->
+               (SinterExpr, TagList)
+transLConAlt n tags (MkLConAlt cname _ tag args expr) =
   let
-    match : SinterExpr
-    match = constInt (maybe 0 id tag) 32 -- FIXME hardcoded width
+    (i, tags') = find' cname tags
+    match = constInt (cast i) 64 -- TODO fixed match width
+    lets : Name -> Nat -> (SinterExpr, SinterExpr)
+    lets a i = (mangleToSinterExpr a,
+               SinterList [ sinterID $ mangle cname ++ ".member-" ++ show i
+                          , n
+                          ]
+               )
+    letIns : List (SinterExpr, SinterExpr)
+    letIns = zipWith lets args [1..(length args)]
+    lh : (SinterExpr, SinterExpr) -> SinterExpr -> SinterExpr
+    lh l expr = SinterList [ sinterID "let", SinterPair l, expr ]
+    acc' : (SinterExpr, TagList)
+    acc' = transExpr tags' expr
+    acc : SinterExpr
+    acc = fst acc'
+    tags'' : TagList
+    tags'' = snd acc'
     expr' : SinterExpr
-    expr' =
-      let
-        lets : Name -> Nat -> (SinterExpr, SinterExpr)
-        lets a i = (mangleToSinterExpr a,
-                   SinterList [ sinterID $ mangle cname ++ ".member-" ++ show i
-                              , n
-                              ]
-                   )
-        letIns : List (SinterExpr, SinterExpr)
-        letIns = zipWith lets args [1..(length args)]
-        lh : (SinterExpr, SinterExpr) -> SinterExpr -> SinterExpr
-        lh l expr = SinterList [ sinterID "let", SinterPair l, expr ]
-      in
-        foldr lh (transExpr expr) letIns
+    expr' = foldr lh acc letIns
   in
-    SinterPair (match, expr')
+    (SinterPair (match, expr'), tags'')
 
 transLocal : {vars : _} -> {idx : _} -> (0 p : IsVar _ idx vars) -> SinterExpr
 transLocal p =
@@ -165,12 +185,14 @@ transLocal p =
     mangleToSinterExpr $ index idx vars {ok = (ivmib idx vars p)}
 
 -- Complete function application
-transAppName : {vars : _} -> Name -> List (Lifted vars) -> SinterExpr
-transAppName n args =
+transAppName : {vars : _} -> TagList -> Name -> List (Lifted vars) ->
+               (SinterExpr, TagList)
+transAppName tags n args =
   let
     n' = mangleToSinterExpr n
+    (args, tags) = tmap transExpr args tags
   in
-    SinterList (n' :: map transExpr args)
+    (SinterList (n' :: args), tags)
 
 ||| Create a closure.
 closure : Name -> Nat -> SinterExpr
@@ -190,143 +212,201 @@ apps c      [] = c
 apps c (x::xs) = apps (app c x) xs
 
 -- partial function application
-transUnderApp : {vars : _} -> Name -> Nat -> List (Lifted vars) -> SinterExpr
-transUnderApp fname unprovidedArgc args =
+transUnderApp : {vars : _} -> TagList -> Name -> Nat -> List (Lifted vars) ->
+                (SinterExpr, TagList)
+transUnderApp tags fname unprovidedArgc args =
   let
     arity = unprovidedArgc + (length args)
     c = closure fname arity
-    args' : List SinterExpr
-    args' = map transExpr args
+    (args', tags) = tmap transExpr args tags
   in
-    apps c args'
+    (apps c args', tags)
 
 -- closure application (potentially complete)
-transApp : {vars : _} -> Lifted vars -> Lifted vars -> SinterExpr
-transApp closure arg =
-  SinterList [ sinterID "closureApp"
-             , transExpr closure
-             , transExpr arg
-             ]
+transApp : {vars : _} -> TagList -> Lifted vars -> Lifted vars ->
+           (SinterExpr, TagList)
+transApp tags closure arg =
+  let
+    (closure', tags) = transExpr tags closure
+    (arg', tags) = transExpr tags arg
+  in
+    ( SinterList [ sinterID "closureApp"
+                 , closure'
+                 , arg'
+                 ]
+    , tags
+    )
 
--- Constructor
-transCon : {vars : _} -> Name -> ConInfo -> List (Lifted vars) -> SinterExpr
-transCon name tag args = 
+-- constructor call
+transCon : {vars : _} -> TagList -> Name -> ConInfo -> List (Lifted vars) ->
+           (SinterExpr, TagList)
+transCon tags name ci args = 
   let
     name' = sinterID (mangle name)
-    -- Not sure why the type declaration is needed here
-    args' : List SinterExpr
-    args' = map transExpr args
+    -- the first argument here is the tag given to the object
+    -- to check its ADT type when case splitting it
+    (tag, tags) = find' name tags
+    (tail, tags) = tmap transExpr args tags
+    tag = constInt (cast tag) 64 -- TODO fixed tag width
+    args' = tag :: tail
   in
-    SinterList (name'::args')
+    (SinterList (name' :: args'), tags)
 
-transConstAlt : {vars : _} -> LiftedConstAlt vars -> SinterExpr
-transConstAlt (MkLConstAlt match expr) = SinterPair (translateConstant match,
-                                                     transExpr expr
-                                                     )
-
-transConstCase : {vars : _} -> Lifted vars -> List (LiftedConstAlt vars) ->
-                 Maybe (Lifted vars) -> SinterExpr
-transConstCase expr alts mdef =
-  SinterList [ sinterID "case"
-             , transExpr expr
-             , SinterList $ map transConstAlt alts
-             , maybe (SinterList [ sinterID "sinter_crash" ]) transExpr mdef
-             ]
-
-transConCase : {vars : _} -> Lifted vars -> List (LiftedConAlt vars) ->
-               Maybe (Lifted vars) -> SinterExpr
-transConCase expr alts mdef =
+transConstAlt : {vars : _} -> TagList -> LiftedConstAlt vars ->
+                (SinterExpr, TagList)
+transConstAlt tags (MkLConstAlt match expr) =
   let
-    expr' = transExpr expr
+    (expr', tags) = transExpr tags expr
+  in
+    ( SinterPair (translateConstant match, expr')
+    , tags
+    )
+
+transConstCase : {vars : _} -> TagList -> Lifted vars ->
+                 List (LiftedConstAlt vars) -> Maybe (Lifted vars) ->
+                 (SinterExpr, TagList)
+transConstCase tags expr alts mdef =
+  let
+    emptyElse = SinterList [ sinterID "sinter_crash" ]
+    (expr', tags) = transExpr tags expr
+    (mdef', tags) = maybe (emptyElse, tags) (transExpr tags) mdef
+    (alts', tags) = tmap transConstAlt alts tags
+  in
+    (SinterList [ sinterID "case", expr', SinterList alts', mdef' ], tags)
+
+transLConAlts : {vars : _} -> String -> List (LiftedConAlt vars) -> TagList ->
+                (List SinterExpr, TagList)
+transLConAlts n xs tags = tmap (transLConAlt (sinterID n)) xs tags
+
+sinterLet : (new : String) -> (old : SinterExpr) -> (body : SinterExpr) ->
+            SinterExpr
+sinterLet new old body = SinterList [ sinterID "let"
+                                    , SinterPair (sinterID new, old)
+                                    , body
+                                    ]
+
+transConCase : {vars : _} -> TagList -> Lifted vars ->
+               List (LiftedConAlt vars) -> Maybe (Lifted vars)
+               -> (SinterExpr, TagList)
+transConCase tags expr alts mdef =
+  let
+    (expr', tags) = transExpr tags expr
     -- cname = mangle $ case head alts of MkLConAlt n _ _ _ _ => n
     cname = "dummy"
-    unique = sinterID "UNIQUE"
-    caseStmt : SinterExpr -> SinterExpr
-    caseStmt x =
+    unique = "UNIQUE"
+    (alts', tags) = transLConAlts unique alts tags
+    m = SinterList [ sinterID "sinter_crash" ]
+    (mdef', tags) = maybe (m, tags) (transExpr tags) mdef
+    caseStmt : SinterExpr
+    caseStmt =
       SinterList [ sinterID "case"
                  , SinterList [ sinterID (cname ++ ".tag")
-                              , x
+                              , sinterID unique
                               ]
-                 , SinterList $ map (transLConAlt x) alts
-                 , maybe (SinterList [ sinterID "sinter_crash" ]) transExpr mdef
+                 , SinterList alts'
+                 , mdef'
                  ]
   in
-    case expr' of
-         SinterExprID _ => caseStmt expr'
-         _ => SinterList [ sinterID "let"
-                         , SinterPair (unique, expr')
-                         , caseStmt unique
-                         ]
-
--- transConCase expr alts mdef =
---   let
---     letName = "UNIQUE" -- FIXME not actually unique yet
---     letName' = sinterID letName
---     wrapper = \e => SinterList [ sinterID "let"
---                                , SinterPair (letName', transExpr expr)
---                                , e
---                                ]
---   in
---     wrapper (SinterList [ sinterID "case"
---                         , sinterID (letName ++ ".tag")
---                         , SinterList $ map (transLConAlt letName) alts
---                         , maybe (sinterID "sinter_crash") transExpr mdef
---                         ])
+    (sinterLet unique expr' caseStmt, tags)
 
 -- As declared above:
 -- transExpr : {vars : _} -> Lifted vars -> SinterExpr
-transExpr (LLocal _ p) = transLocal p
-transExpr (LAppName _ _ n args) = transAppName n args
-transExpr (LUnderApp _ n m args) = transUnderApp n m args
-transExpr (LApp _ _ c arg) = transApp c arg
-transExpr (LCon _ n tag _ xs) = transCon n tag xs
-transExpr (LOp _ _ x xs) = transPrimFn x xs
-transExpr (LConstCase _ expr alts mdef) = transConstCase expr alts mdef
-transExpr (LLet _ n existing in_expr) = transLet n existing in_expr
-transExpr (LPrimVal _ x) = translateConstant x
-transExpr (LErased _) = SinterLiteralExpr $ SinterInt 0 1
-transExpr (LConCase _ x xs y) = transConCase x xs y
-transExpr (LCrash _ _) = sinterID "TODO_LCrash"
-transExpr (LExtPrim _ _ p xs) = sinterID "TODO_LExtPrim"
+transExpr tags (LLocal _ p) = (transLocal p, tags)
+transExpr tags (LAppName _ _ n args) = transAppName tags n args
+transExpr tags (LUnderApp _ n m args) = transUnderApp tags n m args
+transExpr tags (LApp _ _ c arg) = transApp tags c arg
+transExpr tags (LCon _ n tag _ xs) = transCon tags n tag xs
+transExpr tags (LOp _ _ x xs) = transPrimFn tags x xs
+transExpr tags (LConstCase _ expr alts mdef) =
+  transConstCase tags expr alts mdef
+transExpr tags (LLet _ n existing in_expr) = transLet tags n existing in_expr
+transExpr tags (LPrimVal _ x) = (translateConstant x, tags)
+transExpr tags (LErased _) = (SinterLiteralExpr $ SinterInt 0 1, tags)
+transExpr tags (LConCase _ x xs y) = transConCase tags x xs y
+transExpr tags (LCrash _ _) = (sinterID "TODO_LCrash", tags)
+transExpr tags (LExtPrim _ _ p xs) = (sinterID "TODO_LExtPrim", tags)
 
-transDef : (Name, LiftedDef) -> Core SinterTopLevel
-transDef (n, d) = pure $ case d of
+transDef : TagList -> (Name, LiftedDef) -> (SinterTopLevel, TagList)
+transDef tags (n, d) = case d of
 
   MkLFun args scope body =>
     let
       n' = mangleToSinterID n
-      args' = map mangleToSinterID (args ++ scope)
-      body' = transExpr body
+      args' = map mangleToSinterID (args ++ reverse scope)
+      (body', tags) = transExpr tags body
     in
-      SinterDef n' args' body'
+      (SinterDef n' args' body', tags)
 
   MkLCon tag arity nt =>
     let
       n' = mangleToSinterID n
       mems = map (\x => "member-" ++ show x) [1..arity]
       mems' = case tag of
-                   Just _ => "tag"::mems
+                   Just i => ("tag" ++ show i) :: mems
+                   -- Just _ => mems
                    Nothing => mems
     in
-      SinterType n' (map MkSinterID mems')
+      (SinterType n' (map MkSinterID mems'), tags)
 
   MkLForeign ccs args x =>
     let
       n' = mangleToSinterID n
       args' = zipWith (\x, y => show x ++ show y) args [1..(length args)]
     in
-      SinterDec n' (map MkSinterID args')
+      (SinterDec n' (map MkSinterID args'), tags)
 
-  MkLError x => SinterDec (mangleToSinterID n) []
+  MkLError x => (SinterDec (mangleToSinterID n) [], tags)
+
+dec : String -> List String -> SinterTopLevel
+dec n args = SinterDec (MkSinterID n) (map MkSinterID args)
+
+type : String -> List String -> SinterTopLevel
+type n members = SinterType (MkSinterID n) (map MkSinterID members)
+
+runtimeDecs : List SinterTopLevel
+runtimeDecs = [
+  dec "closureApp" ["c", "arg"],
+  dec "closure" ["f", "arity"],
+  dec "sinter_crash" [],
+  dec "++" ["a", "b"],
+  dec "<=Integer" ["a", "b"],
+  dec "*Integer" ["a", "b"],
+  dec "-Integer" ["a", "b"],
+  dec "+Integer" ["a", "b"],
+  dec "believe_me" ["a", "b", "x"],
+
+  -- Not strictly part of the runtime
+  type "dummy" ["tag"]
+  ]
+
+mfilter : List (Maybe a) -> List a
+mfilter [] = []
+mfilter (Nothing :: xs) = mfilter xs
+mfilter (Just x :: xs) = x :: mfilter xs
+
+mmap : (a -> Maybe b) -> List a -> List b
+mmap f xs = mfilter $ map f xs
+
+decOfDef : SinterTopLevel -> Maybe SinterTopLevel
+decOfDef (SinterDef n args _) = Just $ SinterDec n args
+decOfDef _ = Nothing
+
+redundantDecs : List SinterTopLevel -> List SinterTopLevel
+redundantDecs = mmap decOfDef
+
+trans : List (Name, LiftedDef) -> List SinterTopLevel
+trans xs =
+  let (defs, _) = tmap transDef xs []
+  in  defs ++ runtimeDecs ++ redundantDecs defs
 
 compile : Ref Ctxt Defs -> String -> String -> ClosedTerm -> String
         -> Core (Maybe String)
 compile ctxt tmp out term outfile = do
   cd <- getCompileData False Lifted term
   let defs = lambdaLifted cd
-  sinterGlobs <- traverse transDef defs
+  let sinterGlobs = trans defs
   coreLift $ putStrLn (gen sinterGlobs)
-  pure $ Nothing
+  pure Nothing
 
 execute : Ref Ctxt Defs -> String -> ClosedTerm -> Core ()
 execute _ _ _ = ?execution
