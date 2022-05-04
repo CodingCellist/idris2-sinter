@@ -1,0 +1,20 @@
+[dec stdlib_multiply_integers [a b]]
+[def *Integer [a b] [stdlib_multiply_integers a b]]
+
+[dec stdlib_add_integers [a b]]
+[def +Integer [a b] [stdlib_add_integers a b]]
+
+[dec stdlib_subtract_integers [a b]]
+[def -Integer [a b] [stdlib_subtract_integers a b]]
+
+[dec stdlib_less_than_or_equal_to_integer [a b]]
+[def <=Integer [a b] [stdlib_less_than_or_equal_to_integer a b]]
+
+[dec stdlib_string_concatenate [a b]]
+[def ++ [a b] [stdlib_string_concatenate a b]]
+
+[dec stdlib_print_string [a w]]
+[def Prelude::IO::prim__putStr [a w] [stdlib_print_string a w]]
+
+[dec __mainExpression-0 []]
+[def sinter_main [] [__mainExpression-0]]
