@@ -7,7 +7,9 @@ import Compiler.LambdaLift -- for Lifted
 import Core.Context
 import Core.CompileExpr
 import Data.List -- for head
+import Data.List1
 import Data.Vect
+import Data.String
 import Data.String.Extra -- for join
 import Idris.Driver -- for mainWithCodegens
 
@@ -57,7 +59,11 @@ mangle (WithBlock   x i) = simpleMangle [ "with", x, show i ]
 mangle (Resolved      i) = simpleMangle [ "resolved", show i ]
 
 mangleToSinterID : Name -> SinterID
-mangleToSinterID = MkSinterID . mangle
+mangleToSinterID = MkSinterID . sanitise . mangle
+  where
+    sanitise : String -> String
+    sanitise s = let s' = concat $ split (== '{') s
+                 in concat $ split (== '}') s'
 
 mangleToSinterExpr : Name -> SinterExpr
 mangleToSinterExpr = SinterExprID . mangleToSinterID
@@ -67,6 +73,22 @@ constInt x w = SinterLiteralExpr $ SinterInt x w
 
 constStr : String -> SinterExpr
 constStr = SinterLiteralExpr . SinterStr
+
+translatePrimType : PrimType -> SinterExpr
+translatePrimType IntType = ?translatePrimType_rhs_0
+translatePrimType Int8Type = ?translatePrimType_rhs_1
+translatePrimType Int16Type = ?translatePrimType_rhs_2
+translatePrimType Int32Type = ?translatePrimType_rhs_3
+translatePrimType Int64Type = ?translatePrimType_rhs_4
+translatePrimType IntegerType = ?translatePrimType_rhs_5
+translatePrimType Bits8Type = ?translatePrimType_rhs_6
+translatePrimType Bits16Type = ?translatePrimType_rhs_7
+translatePrimType Bits32Type = ?translatePrimType_rhs_8
+translatePrimType Bits64Type = ?translatePrimType_rhs_9
+translatePrimType StringType = ?translatePrimType_rhs_10
+translatePrimType CharType = ?translatePrimType_rhs_11
+translatePrimType DoubleType = ?translatePrimType_rhs_12
+translatePrimType WorldType = ?translatePrimType_rhs_13
 
 translateConstant : Constant -> SinterExpr
 translateConstant c = case c of
@@ -86,22 +108,23 @@ translateConstant c = case c of
   Str x => constStr x
   Ch  x => constInt (cast x) 64
   Db  x => ?constantToSexpr_rhs_9
+  PrT x => translatePrimType x
 
   WorldVal => constInt 0 8
-  IntType => ?constantToSexpr_rhs_11
-  Int8Type => ?fhaconstantToSexpr_rhs_13
-  Int16Type => ?cdahfuoonstantToSexpr_rhs_14
-  Int32Type => ?constafeuhasntToSexpr_rhs_15
-  Int64Type => ?constantToSfhsexpr_rhs_16
-  IntegerType => ?constantToSexpr_rhs_12
-  Bits8Type => ?constantToSexpr_rhs_13
-  Bits16Type => ?constantToSexpr_rhs_14
-  Bits32Type => ?constantToSexpr_rhs_15
-  Bits64Type => ?constantToSexpr_rhs_16
-  StringType => ?constantToSexpr_rhs_17
-  CharType => ?constantToSexpr_rhs_18
-  DoubleType => ?constantToSexpr_rhs_19
-  WorldType => ?constantToSexpr_rhs_20
+--   IntType => ?constantToSexpr_rhs_11
+--   Int8Type => ?fhaconstantToSexpr_rhs_13
+--   Int16Type => ?cdahfuoonstantToSexpr_rhs_14
+--   Int32Type => ?constafeuhasntToSexpr_rhs_15
+--   Int64Type => ?constantToSfhsexpr_rhs_16
+--   IntegerType => ?constantToSexpr_rhs_12
+--   Bits8Type => ?constantToSexpr_rhs_13
+--   Bits16Type => ?constantToSexpr_rhs_14
+--   Bits32Type => ?constantToSexpr_rhs_15
+--   Bits64Type => ?constantToSexpr_rhs_16
+--   StringType => ?constantToSexpr_rhs_17
+--   CharType => ?constantToSexpr_rhs_18
+--   DoubleType => ?constantToSexpr_rhs_19
+--   WorldType => ?constantToSexpr_rhs_20
 
 -- TODO
 sinterPrimFn : String -> SinterExpr
