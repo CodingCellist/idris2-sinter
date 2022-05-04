@@ -61,9 +61,17 @@ mangle (Resolved      i) = simpleMangle [ "resolved", show i ]
 mangleToSinterID : Name -> SinterID
 mangleToSinterID = MkSinterID . sanitise . mangle
   where
+    disallowed : Char -> Bool
+    disallowed '{' = True
+    disallowed '}' = True
+    disallowed '(' = True
+    disallowed ')' = True
+    disallowed '$' = True
+    disallowed _ = False
+
     sanitise : String -> String
-    sanitise s = let s' = concat $ split (== '{') s
-                 in concat $ split (== '}') s'
+    sanitise s = let s = concat $ split disallowed s
+                 in joinBy "^" $ words s
 
 mangleToSinterExpr : Name -> SinterExpr
 mangleToSinterExpr = SinterExprID . mangleToSinterID
@@ -422,12 +430,33 @@ trans xs =
   let (defs, _) = tmap transDef xs []
   in  defs ++ runtimeDecs ++ redundantDecs defs
 
+covering
+Eq SinterTopLevel where
+  (==) (SinterDef _ _ _) (SinterDef _ _ _) = True
+  (==) (SinterDec _ _) (SinterDec _ _) = True
+  (==) (SinterType _ _) (SinterType _ _) = True
+  (==) _ _ = False
+
+covering
+Ord SinterTopLevel where
+  compare (SinterDef _ _ _) (SinterDef _ _ _) = EQ
+  compare (SinterDef _ _ _) (SinterDec _ _) = LT
+  compare (SinterDef _ _ _) (SinterType _ _) = LT
+
+  compare (SinterDec _ _) (SinterDef _ _ _) = GT
+  compare (SinterDec _ _) (SinterDec _ _) = EQ
+  compare (SinterDec _ _) (SinterType _ _) = LT
+
+  compare (SinterType _ _) (SinterDef _ _ _) = GT
+  compare (SinterType _ _) (SinterDec _ _) = GT
+  compare (SinterType _ _) (SinterType _ _) = EQ
+
 compile : Ref Ctxt Defs -> String -> String -> ClosedTerm -> String
         -> Core (Maybe String)
 compile ctxt tmp out term outfile = do
   cd <- getCompileData False Lifted term
   let defs = lambdaLifted cd
-  let sinterGlobs = trans defs
+  let sinterGlobs = sort $ trans defs
   coreLift $ putStrLn (gen sinterGlobs)
   pure Nothing
 
