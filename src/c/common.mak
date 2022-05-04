@@ -1,8 +1,12 @@
-LLC  ?= llc-10
-SINC ?= ../sinc
+LLC ?= clang -c
+SINC ?= sinc
+
+# Alternative option for llc
+# (this seems to cause issues related to PIE on some systems):
+# LLC  ?= llc-10 -filetype obj
 
 %.o: %.ll
-	$(LLC) -filetype obj $(LLCFLAGS) -o $@ $<
+	$(LLC) $(LLCFLAGS) -o $@ $<
 
 %.ll: %.sin
 	$(SINC) -l $(SINCFLAGS) -o $@ $<
