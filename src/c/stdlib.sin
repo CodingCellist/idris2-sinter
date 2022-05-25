@@ -1,20 +1,77 @@
-[dec stdlib_multiply_integers [a b]]
-[def *Integer [a b] [stdlib_multiply_integers a b]]
+[dec stdlib_add_integer [a b]]
+[def +Integer [a b] [stdlib_add_integer a b]]
 
-[dec stdlib_add_integers [a b]]
-[def +Integer [a b] [stdlib_add_integers a b]]
+[dec stdlib_subtract_integer [a b]]
+[def -Integer [a b] [stdlib_subtract_integer a b]]
 
-[dec stdlib_subtract_integers [a b]]
-[def -Integer [a b] [stdlib_subtract_integers a b]]
+[dec stdlib_multiply_integer [a b]]
+[def *Integer [a b] [stdlib_multiply_integer a b]]
 
-[dec stdlib_less_than_or_equal_to_integer [a b]]
-[def <=Integer [a b] [stdlib_less_than_or_equal_to_integer a b]]
+[dec stdlib_divide_integer [a b]]
+[def /Integer [a b] [stdlib_divide_integer a b]]
+
+[dec stdlib_modulo_integer [a b]]
+[def %Integer [a b] [stdlib_modulo_integer a b]]
+
+[dec stdlib_negate_integer [a]]
+[def neg^Integer [a] [stdlib_negate_integer a]]
+
+[dec stdlib_lt_integer [a b]]
+[def <Integer [a b] [stdlib_lt_integer a b]]
+
+[dec stdlib_lte_integer [a b]]
+[def <=Integer [a b] [stdlib_lte_integer a b]]
+
+[dec stdlib_eq_integer [a b]]
+[def ==Integer [a b] [stdlib_eq_integer a b]]
+
+[dec stdlib_gte_integer [a b]]
+[def >=Integer [a b] [stdlib_gte_integer a b]]
+
+[dec stdlib_gt_integer [a b]]
+[def >Integer [a b] [stdlib_gt_integer a b]]
+
+[dec stdlib_add_char [a b]]
+[def +Char [a b] [stdlib_add_char a b]]
+
+[dec stdlib_subtract_char [a b]]
+[def -Char [a b] [stdlib_subtract_char a b]]
+
+[dec stdlib_multiply_char [a b]]
+[def *Char [a b] [stdlib_multiply_char a b]]
+
+[dec stdlib_divide_char [a b]]
+[def /Char [a b] [stdlib_divide_char a b]]
+
+[dec stdlib_modulo_char [a b]]
+[def %Char [a b] [stdlib_modulo_char a b]]
+
+[dec stdlib_negate_char [a]]
+[def neg^Char [a] [stdlib_negate_char a]]
+
+[dec stdlib_lt_char [a b]]
+[def <Char [a b] [stdlib_lt_char a b]]
+
+[dec stdlib_lte_char [a b]]
+[def <=Char [a b] [stdlib_lte_char a b]]
+
+[dec stdlib_eq_char [a b]]
+[def ==Char [a b] [stdlib_eq_char a b]]
+
+[dec stdlib_gte_char [a b]]
+[def >=Char [a b] [stdlib_gte_char a b]]
+
+[dec stdlib_gt_char [a b]]
+[def >Char [a b] [stdlib_gt_char a b]]
 
 [dec stdlib_string_concatenate [a b]]
 [def ++ [a b] [stdlib_string_concatenate a b]]
 
 [dec stdlib_print_string [a w]]
 [def Prelude::IO::prim__putStr [a w] [stdlib_print_string a w]]
+
+[dec sinter_cast_integer_string [a]]
+[def cast-Integer-String [a] [sinter_cast_integer_string a]]
 
 [dec __mainExpression-0 []]
 [def sinter_main [] [__mainExpression-0]]

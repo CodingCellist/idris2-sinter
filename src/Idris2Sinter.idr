@@ -173,7 +173,7 @@ transLConAlt n tags (MkLConAlt cname _ tag args expr) =
     match = constInt (cast i) 64 -- TODO fixed match width
     lets : Name -> Nat -> (SinterExpr, SinterExpr)
     lets a i = (mangleToSinterExpr a,
-               SinterList [ sinterID $ mangle cname ++ ".member-" ++ show i
+               SinterList [ sinterID $ "dummy" ++ ".member-" ++ show i
                           , n
                           ]
                )
@@ -422,7 +422,8 @@ transDef tags (n, d) = case d of
   MkLCon tag arity nt =>
     let
       n' = mangleToSinterID n
-      mems = map (\x => "member-" ++ show x) [1..arity]
+      mems = map (\x => "member-" ++ show x)
+        (if arity == 0 then [] else [1..arity])
       mems' = case tag of
                    Just i => ("tag" ++ show i) :: mems
                    -- Just _ => mems
@@ -451,16 +452,20 @@ runtimeDecs = [
   dec "closure" ["f", "arity"],
   dec "sinter_crash" [],
   dec "++" ["a", "b"],
-  dec "<=Integer" ["a", "b"],
-  dec "*Integer" ["a", "b"],
-  dec "-Integer" ["a", "b"],
-  dec "+Integer" ["a", "b"],
   dec "believe_me" ["a", "b", "x"],
   dec "sinter_str_eq" ["a", "b"],
 
-  -- Not strictly part of the runtime
-  type "dummy" ["tag"]
-  ]
+  dec "cast-Integer-String" ["a"],
+
+  dec "op_strhead" ["str"],
+  dec "op_strtail" ["str"],
+  dec "op_strindex" ["str", "n"],
+
+  type "dummy" ("tag" :: map (("member-" ++) . show) [1..32])
+
+  ] ++ [dec (y ++ x) ["a", "b"] |
+          x <- ["Integer", "Char"],
+          y <- ["+", "-", "*", "/", "<", "<=", "==", ">=", ">"]]
 
 mfilter : List (Maybe a) -> List a
 mfilter [] = []
