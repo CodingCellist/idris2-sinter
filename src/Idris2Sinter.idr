@@ -454,8 +454,8 @@ Ord SinterTopLevel where
   compare (SinterType _ _) (SinterDec _ _) = GT
   compare (SinterType _ _) (SinterType _ _) = EQ
 
-compile : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> String -> String -> ClosedTerm -> String
-        -> Core (Maybe String)
+compile : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> String -> String ->
+          ClosedTerm -> String -> Core (Maybe String)
 compile ctxt syn tmp out term outfile = do
   cd <- getCompileData False Lifted term
   let defs = lambdaLifted cd
@@ -463,7 +463,8 @@ compile ctxt syn tmp out term outfile = do
   coreLift $ putStrLn (gen sinterGlobs)
   pure Nothing
 
-execute : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> String -> ClosedTerm -> Core ()
+execute : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> String -> ClosedTerm ->
+          Core ()
 execute _ _ _ = ?execution
 
 sinterCodegen : Codegen
@@ -471,4 +472,3 @@ sinterCodegen = MkCG compile execute Nothing Nothing
 
 main : IO ()
 main = mainWithCodegens [("sinter", sinterCodegen)]
-
