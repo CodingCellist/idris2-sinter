@@ -465,7 +465,8 @@ compile ctxt syn tmp out term outfile = do
 
 execute : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> String -> ClosedTerm ->
           Core ()
-execute _ _ _ = ?execution
+execute _ _ _ _ = coreFail (UserError
+                           "this backend cannot execute, only compile")
 
 sinterCodegen : Codegen
 sinterCodegen = MkCG compile execute Nothing Nothing
