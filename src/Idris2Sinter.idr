@@ -12,7 +12,7 @@ import Data.Vect
 import Data.String
 import Data.String.Extra -- for join
 import Idris.Driver -- for mainWithCodegens
-
+import Libraries.Utils.Path
 
 import Idris.Syntax
 
@@ -460,8 +460,9 @@ compile ctxt syn tmp out term outfile = do
   cd <- getCompileData False Lifted term
   let defs = lambdaLifted cd
   let sinterGlobs = sort $ trans defs
-  coreLift $ putStrLn (gen sinterGlobs)
-  pure Nothing
+  let output = out </> outfile
+  writeFile output (gen sinterGlobs)
+  pure (Just output)
 
 execute : Ref Ctxt Defs -> Ref Syn SyntaxInfo -> String -> ClosedTerm ->
           Core ()
