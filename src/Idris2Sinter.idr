@@ -74,7 +74,7 @@ mangleToSinterID = MkSinterID . sanitise . mangle
 
     sanitise : String -> String
     sanitise s = let s = concat $ split disallowed s
-                 in joinBy "^" $ words s
+                 in join "^" $ words s
 
 mangleToSinterExpr : Name -> SinterExpr
 mangleToSinterExpr = SinterExprID . mangleToSinterID
@@ -122,20 +122,6 @@ translateConstant c = case c of
   PrT x => translatePrimType x
 
   WorldVal => constInt 0 8
---   IntType => ?constantToSexpr_rhs_11
---   Int8Type => ?fhaconstantToSexpr_rhs_13
---   Int16Type => ?cdahfuoonstantToSexpr_rhs_14
---   Int32Type => ?constafeuhasntToSexpr_rhs_15
---   Int64Type => ?constantToSfhsexpr_rhs_16
---   IntegerType => ?constantToSexpr_rhs_12
---   Bits8Type => ?constantToSexpr_rhs_13
---   Bits16Type => ?constantToSexpr_rhs_14
---   Bits32Type => ?constantToSexpr_rhs_15
---   Bits64Type => ?constantToSexpr_rhs_16
---   StringType => ?constantToSexpr_rhs_17
---   CharType => ?constantToSexpr_rhs_18
---   DoubleType => ?constantToSexpr_rhs_19
---   WorldType => ?constantToSexpr_rhs_20
 
 -- TODO
 sinterPrimFn : String -> SinterExpr
@@ -190,7 +176,7 @@ transLConAlt n tags (MkLConAlt cname _ tag args expr) =
     match = constInt (cast i) 64 -- TODO fixed match width
     lets : Name -> Nat -> (SinterExpr, SinterExpr)
     lets a i = (mangleToSinterExpr a,
-               SinterList [ sinterID $ mangle cname ++ ".member-" ++ show i
+               SinterList [ sinterID $ "dummy" ++ ".member-" ++ show i
                           , n
                           ]
                )
@@ -296,10 +282,10 @@ transConstAlt tags (MkLConstAlt match expr) =
     , tags
     )
 
-transConstCase : {vars : _} -> TagList -> Lifted vars ->
-                 List (LiftedConstAlt vars) -> Maybe (Lifted vars) ->
-                 (SinterExpr, TagList)
-transConstCase tags expr alts mdef =
+transIntConstCase : {vars : _} -> TagList -> Lifted vars ->
+                    List (LiftedConstAlt vars) -> Maybe (Lifted vars) ->
+                    (SinterExpr, TagList)
+transIntConstCase tags expr alts mdef =
   let
     emptyElse = SinterList [ sinterID "sinter_crash" ]
     (expr', tags) = transExpr tags expr
@@ -307,6 +293,71 @@ transConstCase tags expr alts mdef =
     (alts', tags) = tmap transConstAlt alts tags
   in
     (SinterList [ sinterID "case", expr', SinterList alts', mdef' ], tags)
+
+transStringConstCase : {vars : _} -> TagList -> Lifted vars ->
+                       List (LiftedConstAlt vars) -> Maybe (Lifted vars) ->
+                       (SinterExpr, TagList)
+transStringConstCase tags expr [] mdef =
+  case mdef of
+       Nothing  => (SinterList [ sinterID "sinter_crash" ], tags)
+       Just def => transExpr tags def
+-- [if [eq a b] [then_body] [else_body] eqw]
+transStringConstCase tags expr ((MkLConstAlt match then') :: alts) mdef =
+  let
+    match = translateConstant match
+    (expr', tags) = transExpr tags expr
+    (then', tags) = transExpr tags then'
+    (else', tags) = transStringConstCase tags expr alts mdef
+    eqWidth = SinterIfWidth 64
+    eqf = SinterList [ sinterID "sinter_str_eq"
+                     , match
+                     , expr'
+                     ]
+  in
+    ( SinterList [ sinterID "if"
+                 , eqf
+                 , then'
+                 , else'
+                 , eqWidth
+                 ]
+    , tags
+    )
+
+data CaseType = IntLike | StringLike | WeirdLike | NoAlts
+
+caseType : List (LiftedConstAlt vars) -> CaseType
+caseType [] = NoAlts
+caseType ((MkLConstAlt m e) :: alts) =
+  case m of
+       I   _ => IntLike
+       I8  _ => IntLike
+       I16 _ => IntLike
+       I32 _ => IntLike
+       I64 _ => IntLike
+
+       Str _ => StringLike
+
+       BI  _ => WeirdLike
+       B8  _ => WeirdLike
+       B16 _ => WeirdLike
+       B32 _ => WeirdLike
+       B64 _ => WeirdLike
+
+       Ch  _ => WeirdLike
+       Db  _ => WeirdLike
+       PrT _ => WeirdLike
+
+       WorldVal => WeirdLike
+
+transConstCase : {vars : _} -> TagList -> Lifted vars ->
+                 List (LiftedConstAlt vars) -> Maybe (Lifted vars) ->
+                 (SinterExpr, TagList)
+transConstCase tags expr alts mdef =
+  case caseType alts of
+       IntLike => transIntConstCase tags expr alts mdef
+       StringLike => transStringConstCase tags expr alts mdef
+       WeirdLike => ?weirdConstCase tags expr alts mdef
+       NoAlts => ?emptyConstCase tags expr alts mdef
 
 transLConAlts : {vars : _} -> String -> List (LiftedConAlt vars) -> TagList ->
                 (List SinterExpr, TagList)
@@ -374,7 +425,8 @@ transDef tags (n, d) = case d of
   MkLCon tag arity nt =>
     let
       n' = mangleToSinterID n
-      mems = map (\x => "member-" ++ show x) [1..arity]
+      mems = map (\x => "member-" ++ show x)
+        (if arity == 0 then [] else [1..arity])
       mems' = case tag of
                    Just i => ("tag" ++ show i) :: mems
                    -- Just _ => mems
@@ -403,15 +455,20 @@ runtimeDecs = [
   dec "closure" ["f", "arity"],
   dec "sinter_crash" [],
   dec "++" ["a", "b"],
-  dec "<=Integer" ["a", "b"],
-  dec "*Integer" ["a", "b"],
-  dec "-Integer" ["a", "b"],
-  dec "+Integer" ["a", "b"],
   dec "believe_me" ["a", "b", "x"],
+  dec "sinter_str_eq" ["a", "b"],
 
-  -- Not strictly part of the runtime
-  type "dummy" ["tag"]
-  ]
+  dec "cast-Integer-String" ["a"],
+
+  dec "op_strhead" ["str"],
+  dec "op_strtail" ["str"],
+  dec "op_strindex" ["str", "n"],
+
+  type "dummy" ("tag" :: map (("member-" ++) . show) [1..32])
+
+  ] ++ [dec (y ++ x) ["a", "b"] |
+          x <- ["Integer", "Char"],
+          y <- ["+", "-", "*", "/", "<", "<=", "==", ">=", ">"]]
 
 mfilter : List (Maybe a) -> List a
 mfilter [] = []

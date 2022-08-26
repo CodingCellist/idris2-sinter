@@ -51,6 +51,7 @@ data SinterExpr : Type where
   SinterPair : (SinterExpr, SinterExpr) -> SinterExpr
   SinterLiteralExpr : SinterLiteral -> SinterExpr
   SinterExprID : SinterID -> SinterExpr
+  SinterIfWidth : Nat -> SinterExpr -- TODO messy
 
 ||| Render a Sinter expression into text.
 genSexpr : SinterExpr -> String
@@ -63,6 +64,8 @@ genSexpr (SinterLiteralExpr expr) = case expr of
   SinterStr v => show v
 
 genSexpr (SinterExprID id') = genSID id'
+
+genSexpr (SinterIfWidth w) = show w
 
 -- can't implement Show with genSexpr since genSexpr isn't proven to be total
 

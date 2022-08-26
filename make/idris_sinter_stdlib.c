@@ -1,10 +1,10 @@
 /* vim: set ts=4 sw=4 et tw=80 : */
 
-#include <string.h>
-#include <stdio.h>
-#include <stdint.h>
 #include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <gc.h>
 
@@ -16,39 +16,66 @@ void *gc_alloc(size_t size) {
     return p;
 }
 
+/* NOTE
+ * Functions that use this function will only work when always-boxing.
+ */
+box_t _box(void *x, size_t size) {
+    box_t res = gc_alloc(size);
+    memcpy(res, x, size);
+    return res;
+}
+
+#define box(x) (_box(&(x), sizeof(x)))
+
+#define unbox(x, t) (*((t *) x))
+
 box_t sinter_main();
 
 int main() {
     return *sinter_main();
 }
 
-// *Integer
-box_t stdlib_multiply_integers(box_t a, box_t b) {
-    box_t box = gc_alloc(sizeof(*box));
-    *box = *a * *b;
-    return box;
+#define prefix_op(n, t, op) \
+box_t n(box_t b) { \
+    t a = unbox(b, t); \
+    t res = op a; \
+    return box(res); \
 }
 
-// +Integer
-box_t stdlib_add_integers(box_t a, box_t b) {
-    box_t box = gc_alloc(sizeof(*box));
-    *box = *a + *b;
-    return box;
+#define binary_op(n, t, op) \
+box_t n(box_t ab, box_t bb) { \
+    t a = unbox(ab, t); \
+    t b = unbox(bb, t); \
+    t res = a op b; \
+    return box(res); \
 }
 
-// -Integer
-box_t stdlib_subtract_integers(box_t a, box_t b) {
-    box_t box = gc_alloc(sizeof(*box));
-    *box = *a - *b;
-    return box;
-}
+#define op_suite(n, t) \
+binary_op(stdlib_add_ ## n, t, +) \
+binary_op(stdlib_subtract_ ## n, t, -) \
+binary_op(stdlib_multiply_ ## n, t, *) \
+binary_op(stdlib_divide_ ## n, t, /) \
+binary_op(stdlib_modulo_ ## n, t, %) \
+prefix_op(stdlib_negate_ ## n, t, -) \
+binary_op(stdlib_shl_ ## n, t, <<) \
+binary_op(stdlib_shr_ ## n, t, >>) \
+binary_op(stdlib_and_ ## n, t, &) \
+binary_op(stdlib_or_ ## n, t, |) \
+binary_op(stdlib_xor_ ## n, t, ^) \
+binary_op(stdlib_lt_ ## n, t, <) \
+binary_op(stdlib_lte_ ## n, t, <=) \
+binary_op(stdlib_eq_ ## n, t, ==) \
+binary_op(stdlib_gte_ ## n, t, >=) \
+binary_op(stdlib_gt_ ## n, t, >)
 
-// <=Integer
-box_t stdlib_less_than_or_equal_to_integer(box_t a, box_t b) {
-    box_t box = gc_alloc(sizeof(*box));
-    *box = *a <= *b ? 1 : 0;
-    return box;
-}
+op_suite(int, int)
+op_suite(int8, int8_t)
+op_suite(int16, int16_t)
+op_suite(int32, int32_t)
+op_suite(int64, int64_t)
+op_suite(integer, int)
+op_suite(char, char)
+// op_suite(double, double)
 
 // ++
 box_t stdlib_string_concatenate(box_t a, box_t b) {
@@ -78,6 +105,23 @@ box_t believe_me(box_t a, box_t b, box_t v) {
 box_t sinter_crash() {
     exit(1);
     return NULL;
+}
+
+// cast-Integer-String
+box_t sinter_cast_integer_string(box_t b) {
+    int i = unbox(b, int);
+    int size = snprintf(NULL, 0, "%i", i) + 1;
+    char *res = gc_alloc(size);
+    snprintf(res, size, "%i", i);
+    return (box_t) res;
+}
+
+box_t sinter_str_eq(box_t ba, box_t bb) {
+    char *a = (char *) ba;
+    char *b = (char *) bb;
+
+    int res = !strcmp(a, b);
+    return box(res);
 }
 
 typedef struct {
@@ -186,4 +230,29 @@ box_t run_func(closure_t *c) {
     new_case(16, c, i);
 
     assert(0);
+}
+
+box_t op_strlen(box_t b) {
+    char *str = (char *) b;
+    size_t len = strlen(str);
+    return box(len);
+}
+
+box_t op_strhead(box_t b) {
+    char *str = (char *) b;
+    char head = str[0];
+    return box(head);
+}
+
+box_t op_strtail(box_t b) {
+    char *str = (char *) b;
+    char *c;
+    for (c = str; *c; c++);
+    return box(c[-1]);
+}
+
+box_t op_strindex(box_t a, box_t b) {
+    char *str = (char *) a;
+    int n = unbox(b, int);
+    return box(str[n]);
 }
