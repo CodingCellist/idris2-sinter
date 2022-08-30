@@ -13,6 +13,7 @@ import Data.String
 import Data.String.Extra -- for join
 import Idris.Driver -- for mainWithCodegens
 import Libraries.Utils.Path
+import Debug.Trace
 
 import Idris.Syntax
 
@@ -61,20 +62,35 @@ mangle (CaseBlock   x i) = simpleMangle [ "case", x, show i ]
 mangle (WithBlock   x i) = simpleMangle [ "with", x, show i ]
 mangle (Resolved      i) = simpleMangle [ "resolved", show i ]
 
+disallowed : Char -> Bool
+disallowed '{' = True
+disallowed '}' = True
+disallowed '(' = True
+disallowed ')' = True
+disallowed '$' = True
+disallowed _ = False
+
+sanitise : String -> String
+sanitise s = let s = concat $ split disallowed s
+              in join "^" $ words s
+
+data InvalidIdentifierError = InvalidCharacter Char
+
+validateSinterID : String -> Either String InvalidIdentifierError
+validateSinterID s =
+  case go (unpack s) of
+    Nothing => Left s
+    Just err => Right err
+where
+  go : List Char -> Maybe InvalidIdentifierError
+  go [] = Nothing
+  go (x :: xs) =
+    if disallowed x
+      then Just $ InvalidCharacter x
+      else go xs
+
 mangleToSinterID : Name -> SinterID
 mangleToSinterID = MkSinterID . sanitise . mangle
-  where
-    disallowed : Char -> Bool
-    disallowed '{' = True
-    disallowed '}' = True
-    disallowed '(' = True
-    disallowed ')' = True
-    disallowed '$' = True
-    disallowed _ = False
-
-    sanitise : String -> String
-    sanitise s = let s = concat $ split disallowed s
-                 in join "^" $ words s
 
 mangleToSinterExpr : Name -> SinterExpr
 mangleToSinterExpr = SinterExprID . mangleToSinterID
@@ -411,6 +427,10 @@ transExpr tags (LConCase _ x xs y) = transConCase tags x xs y
 transExpr tags (LCrash _ _) = (sinterID "TODO_LCrash", tags)
 transExpr tags (LExtPrim _ _ p xs) = (sinterID "TODO_LExtPrim", tags)
 
+mapLeft : (a -> b) -> Either a c -> Either b c
+mapLeft f (Left x) = Left (f x)
+mapLeft _ (Right y) = Right y
+
 transDef : TagList -> (Name, LiftedDef) -> (SinterTopLevel, TagList)
 transDef tags (n, d) = case d of
 
@@ -434,14 +454,37 @@ transDef tags (n, d) = case d of
     in
       (SinterType n' (map MkSinterID mems'), tags)
 
-  MkLForeign ccs args x =>
-    let
-      n' = mangleToSinterID n
-      args' = zipWith (\x, y => show x ++ show y) args [1..(length args)]
-    in
-      (SinterDec n' (map MkSinterID args'), tags)
+  MkLForeign ccs args x => do
+    let n' =
+      case getSinterForeignName (trace "css: \{show ccs}" ccs) of
+          Nothing => mangleToSinterID n
+          Just either =>
+            case either of
+              Left id => id
+              Right (InvalidCharacter c) => MkSinterID "Invalid character in identifier «\{show n}»: \{show c}»" -- adhoc error reporting
+    let args' = zipWith (\x, y => show x ++ show y) args [1..(length args)]
+    
+    (SinterDec n' (map MkSinterID args'), tags)
 
   MkLError x => (SinterDec (mangleToSinterID n) [], tags)
+where
+  breakMaybe : Char -> String -> Maybe (String, String)
+  breakMaybe c s =
+    case splitOn c (unpack s) of
+      (_ ::: []) => Nothing
+      (x ::: xs) => Just $ (pack x, joinBy (pack [c]) (map pack xs))
+
+  fromForeignSig : String -> Maybe (Either SinterID InvalidIdentifierError)
+  fromForeignSig s = do
+    let Just (part1, part2) = breakMaybe ':' s
+    | _ => Nothing
+    let True = toLower (trim part1) == "sinter"
+    | _ => Nothing
+    Just $ mapLeft MkSinterID $ validateSinterID (trim part2)
+
+  getSinterForeignName : List String -> Maybe (Either SinterID InvalidIdentifierError)
+  getSinterForeignName [] = Nothing
+  getSinterForeignName (signature::rest) = fromForeignSig signature <|> getSinterForeignName rest
 
 dec : String -> List String -> SinterTopLevel
 dec n args = SinterDec (MkSinterID n) (map MkSinterID args)
