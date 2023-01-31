@@ -1,2 +1,5 @@
+.build/
 build/
+depends/
 *.idr~
+idris2-sinter.ipkg
