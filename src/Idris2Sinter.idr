@@ -172,7 +172,7 @@ transLConAlt : {vars : _} -> SinterExpr -> TagList -> LiftedConAlt vars ->
                (SinterExpr, TagList)
 transLConAlt n tags (MkLConAlt cname _ tag args expr) =
   let
-    (i, tags') = find' cname tags
+    (i, tags') = find cname tags
     match = constInt (cast i) 64 -- TODO fixed match width
     lets : Name -> Nat -> (SinterExpr, SinterExpr)
     lets a i = (mangleToSinterExpr a,
@@ -265,7 +265,7 @@ transCon tags name ci args =
     name' = sinterID (mangle name)
     -- the first argument here is the tag given to the object
     -- to check its ADT type when case splitting it
-    (tag, tags) = find' name tags
+    (tag, tags) = find name tags
     (tail, tags) = tmap transExpr args tags
     tag = constInt (cast tag) 64 -- TODO fixed tag width
     args' = tag :: tail
