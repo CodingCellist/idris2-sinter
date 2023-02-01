@@ -3,3 +3,7 @@ build/
 depends/
 *.idr~
 idris2-sinter.ipkg
+
+make/program.sin
+make/*.o
+make/program
